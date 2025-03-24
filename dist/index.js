@@ -292,8 +292,9 @@ var GoogleSheetsService = class {
     try {
       if (!this.sheetId) {
         console.error("Error: Google Sheet ID is not configured");
-        return false;
+        throw new Error("Google Sheet ID is not configured");
       }
+      console.log("Adding customer data to Google Sheets for contact:", data.contact);
       const values = [
         data.timestamp || (/* @__PURE__ */ new Date()).toISOString(),
         data.name,
@@ -304,8 +305,10 @@ var GoogleSheetsService = class {
         data.budgetRange || "",
         data.notes || ""
       ];
+      console.log("Checking if contact already exists in Google Sheets");
       const existingRow = await this.findContactRow(data.contact);
       if (existingRow) {
+        console.log(`Contact ${data.contact} found at row ${existingRow}, updating existing entry`);
         const result = await this.sheets.spreadsheets.values.update({
           spreadsheetId: this.sheetId,
           range: `Sheet1!A${existingRow}:H${existingRow}`,
@@ -314,8 +317,15 @@ var GoogleSheetsService = class {
             values: [values]
           }
         });
-        return result.status === 200;
+        if (result.status === 200) {
+          console.log(`Successfully updated existing contact at row ${existingRow}`);
+          return true;
+        } else {
+          console.error(`Error updating row ${existingRow}, status code: ${result.status}`);
+          return false;
+        }
       } else {
+        console.log(`Contact ${data.contact} not found, appending new row`);
         const result = await this.sheets.spreadsheets.values.append({
           spreadsheetId: this.sheetId,
           range: "Sheet1!A:H",
@@ -331,15 +341,31 @@ var GoogleSheetsService = class {
             if (match && match[1]) {
               const rowNumber = parseInt(match[1]);
               contactRowMap.set(data.contact, rowNumber);
+              console.log(`New contact added at approximate row ${rowNumber}`);
+            } else {
+              console.log("Added new contact but could not determine row number");
             }
           }
           return true;
         }
+        console.error("Failed to append new row, status code:", result.status);
         return false;
       }
     } catch (error) {
       console.error("Error adding/updating data in Google Sheet:", error);
-      return false;
+      if (error.response) {
+        console.error("Google API error details:", {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data
+        });
+        if (error.response.status === 403) {
+          console.error("Permission denied. Make sure the service account has Editor access to the spreadsheet");
+        } else if (error.response.status === 404) {
+          console.error("Spreadsheet not found. Check the GOOGLE_SHEET_ID value");
+        }
+      }
+      throw error;
     }
   }
 };
@@ -468,10 +494,25 @@ async function registerRoutes(app2) {
     }
   });
   app2.post("/api/sheets/log-lead", async (req, res) => {
+    console.log("Received lead data request:", JSON.stringify(req.body));
     try {
+      if (!process.env.GOOGLE_SHEET_ID) {
+        console.error("GOOGLE_SHEET_ID environment variable is missing");
+        return res.status(500).json({
+          error: "Server configuration error - missing sheet ID",
+          details: "Contact administrator to verify Google Sheets configuration"
+        });
+      }
+      if (!process.env.GOOGLE_SHEETS_CLIENT_EMAIL || !process.env.GOOGLE_SHEETS_PRIVATE_KEY) {
+        console.error("Google Sheets credentials are missing");
+        return res.status(500).json({
+          error: "Server configuration error - missing credentials",
+          details: "Contact administrator to verify Google API credentials"
+        });
+      }
       const leadSchema = z.object({
-        name: z.string(),
-        contact: z.string(),
+        name: z.string().min(2, "Name must be at least 2 characters"),
+        contact: z.string().min(5, "Contact information must be at least 5 characters"),
         interest: z.string(),
         propertyInterest: z.string().optional(),
         locationInterest: z.string().optional(),
@@ -479,21 +520,49 @@ async function registerRoutes(app2) {
         notes: z.string().optional()
       });
       const validatedData = leadSchema.parse(req.body);
+      console.log("Validated lead data:", JSON.stringify(validatedData));
       const timestamp = (/* @__PURE__ */ new Date()).toISOString();
       const success = await googleSheetsService.addCustomerData({
         ...validatedData,
         timestamp
       });
       if (success) {
+        console.log("Successfully logged lead to Google Sheets");
         res.status(201).json({ message: "Lead logged successfully" });
       } else {
-        res.status(500).json({ error: "Failed to log lead to Google Sheets" });
+        console.error("Failed to log lead to Google Sheets - service returned failure");
+        res.status(500).json({
+          error: "Failed to log lead to Google Sheets",
+          details: "The request was processed but the Google Sheets service could not complete the operation"
+        });
       }
     } catch (error) {
+      console.error("Error in /api/sheets/log-lead:", error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
+        console.error("Validation error:", JSON.stringify(error.errors));
+        return res.status(400).json({
+          error: "Invalid lead data",
+          details: error.errors
+        });
       }
-      res.status(500).json({ error: "Failed to log lead" });
+      if (error.message && error.message.includes("invalid_grant")) {
+        console.error("Google API authentication error - invalid_grant");
+        return res.status(500).json({
+          error: "Google Sheets authentication error",
+          details: "The service account credentials may be invalid or expired"
+        });
+      }
+      if (error.message && error.message.includes("permission_denied")) {
+        console.error("Google API permission error - permission_denied");
+        return res.status(500).json({
+          error: "Google Sheets permission error",
+          details: "The service account does not have permission to access the spreadsheet"
+        });
+      }
+      res.status(500).json({
+        error: "Failed to log lead",
+        details: error.message || "Unknown error occurred"
+      });
     }
   });
   const httpServer = createServer(app2);
