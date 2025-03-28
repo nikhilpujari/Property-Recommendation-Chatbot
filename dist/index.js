@@ -1,24 +1,218 @@
+var __defProp = Object.defineProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
 // server/index.ts
 import express2 from "express";
 
 // server/routes.ts
 import { createServer } from "http";
 
+// server/db.ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+
+// shared/schema.ts
+var schema_exports = {};
+__export(schema_exports, {
+  chatUsers: () => chatUsers,
+  insertChatUserSchema: () => insertChatUserSchema,
+  insertLeadSchema: () => insertLeadSchema,
+  insertProjectSchema: () => insertProjectSchema,
+  insertPropertySchema: () => insertPropertySchema,
+  leads: () => leads,
+  projects: () => projects,
+  properties: () => properties
+});
+import { pgTable, text, serial, integer, boolean, json, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+var chatUsers = pgTable("chat_users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  contact: text("contact").notNull(),
+  conversation: json("conversation").$type()
+});
+var insertChatUserSchema = createInsertSchema(chatUsers).pick({
+  name: true,
+  contact: true,
+  conversation: true
+});
+var leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  contact: text("contact").notNull(),
+  interest: text("interest").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  propertyInterest: text("property_interest"),
+  locationInterest: text("location_interest"),
+  budgetRange: text("budget_range"),
+  notes: text("notes"),
+  assignedAgent: text("assigned_agent"),
+  followUpDate: timestamp("follow_up_date")
+});
+var insertLeadSchema = createInsertSchema(leads).pick({
+  name: true,
+  contact: true,
+  interest: true,
+  propertyInterest: true,
+  locationInterest: true,
+  budgetRange: true,
+  notes: true,
+  assignedAgent: true,
+  followUpDate: true
+});
+var properties = pgTable("properties", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  price: integer("price").notNull(),
+  location: text("location").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  bedrooms: integer("bedrooms").notNull(),
+  bathrooms: integer("bathrooms").notNull(),
+  squareFeet: integer("square_feet").notNull(),
+  garage: integer("garage").notNull(),
+  isFeatured: boolean("is_featured").default(false),
+  image: text("image").notNull()
+});
+var insertPropertySchema = createInsertSchema(properties).pick({
+  title: true,
+  description: true,
+  price: true,
+  location: true,
+  type: true,
+  status: true,
+  bedrooms: true,
+  bathrooms: true,
+  squareFeet: true,
+  garage: true,
+  isFeatured: true,
+  image: true
+});
+var projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  location: text("location").notNull(),
+  units: text("units").notNull(),
+  startingPrice: integer("starting_price").notNull(),
+  completionDate: text("completion_date").notNull(),
+  status: text("status").notNull(),
+  progressPercentage: integer("progress_percentage").notNull(),
+  image: text("image").notNull()
+});
+var insertProjectSchema = createInsertSchema(projects).pick({
+  title: true,
+  description: true,
+  location: true,
+  units: true,
+  startingPrice: true,
+  completionDate: true,
+  status: true,
+  progressPercentage: true,
+  image: true
+});
+
+// server/db.ts
+var databaseUrl = process.env.DATABASE_URL;
+var queryClient = postgres(databaseUrl, { max: 10 });
+var db = drizzle(queryClient, { schema: schema_exports });
+
+// server/databaseStorage.ts
+import { eq, desc, sql } from "drizzle-orm";
+var DatabaseStorage = class {
+  // Chat Users Methods
+  async getChatUser(id) {
+    const [user] = await db.select().from(chatUsers).where(eq(chatUsers.id, id));
+    return user || void 0;
+  }
+  async getChatUserByContact(contact) {
+    const [user] = await db.select().from(chatUsers).where(eq(chatUsers.contact, contact));
+    return user || void 0;
+  }
+  async createChatUser(user) {
+    const [createdUser] = await db.insert(chatUsers).values([user]).returning();
+    return createdUser;
+  }
+  async updateChatUserConversation(id, conversation) {
+    const [updatedUser] = await db.update(chatUsers).set({ conversation }).where(eq(chatUsers.id, id)).returning();
+    return updatedUser || void 0;
+  }
+  // Properties Methods
+  async getProperties() {
+    return await db.select().from(properties);
+  }
+  async getProperty(id) {
+    const [property] = await db.select().from(properties).where(eq(properties.id, id));
+    return property || void 0;
+  }
+  async getFeaturedProperties() {
+    return await db.select().from(properties).where(eq(properties.isFeatured, true));
+  }
+  async getPropertiesByType(type) {
+    return await db.select().from(properties).where(eq(properties.type, type));
+  }
+  async getPropertiesByLocation(location) {
+    return await db.select().from(properties).where(sql`${properties.location} ILIKE ${`%${location}%`}`);
+  }
+  // Projects Methods
+  async getProjects() {
+    return await db.select().from(projects);
+  }
+  async getProject(id) {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project || void 0;
+  }
+  // Leads Methods
+  async getLeads() {
+    return await db.select().from(leads).orderBy(desc(leads.createdAt));
+  }
+  async getLead(id) {
+    const [lead] = await db.select().from(leads).where(eq(leads.id, id));
+    return lead || void 0;
+  }
+  async createLead(lead) {
+    const [createdLead] = await db.insert(leads).values([lead]).returning();
+    return createdLead;
+  }
+  async updateLead(id, lead) {
+    const [updatedLead] = await db.update(leads).set(lead).where(eq(leads.id, id)).returning();
+    return updatedLead || void 0;
+  }
+  async deleteLead(id) {
+    const result = await db.delete(leads).where(eq(leads.id, id)).returning({ id: leads.id });
+    return result.length > 0;
+  }
+  async getLeadsByStatus(status) {
+    return await db.select().from(leads).where(eq(leads.status, status));
+  }
+  async getLeadsByAgent(agent) {
+    return await db.select().from(leads).where(eq(leads.assignedAgent, agent));
+  }
+};
+
 // server/storage.ts
 var MemStorage = class {
   chatUsers;
   properties;
   projects;
+  leads;
   currentChatUserId;
   currentPropertyId;
   currentProjectId;
+  currentLeadId;
   constructor() {
     this.chatUsers = /* @__PURE__ */ new Map();
     this.properties = /* @__PURE__ */ new Map();
     this.projects = /* @__PURE__ */ new Map();
+    this.leads = /* @__PURE__ */ new Map();
     this.currentChatUserId = 1;
     this.currentPropertyId = 1;
     this.currentProjectId = 1;
+    this.currentLeadId = 1;
     this.initializeData();
   }
   // Chat Users Methods
@@ -71,6 +265,43 @@ var MemStorage = class {
   }
   async getProject(id) {
     return this.projects.get(id);
+  }
+  // Leads Methods
+  async getLeads() {
+    return Array.from(this.leads.values());
+  }
+  async getLead(id) {
+    return this.leads.get(id);
+  }
+  async createLead(lead) {
+    const id = this.currentLeadId++;
+    const newLead = {
+      ...lead,
+      id,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    this.leads.set(id, newLead);
+    return newLead;
+  }
+  async updateLead(id, lead) {
+    const existingLead = await this.getLead(id);
+    if (!existingLead) return void 0;
+    const updatedLead = { ...existingLead, ...lead };
+    this.leads.set(id, updatedLead);
+    return updatedLead;
+  }
+  async deleteLead(id) {
+    return this.leads.delete(id);
+  }
+  async getLeadsByStatus(status) {
+    return Array.from(this.leads.values()).filter(
+      (lead) => lead.status.toLowerCase() === status.toLowerCase()
+    );
+  }
+  async getLeadsByAgent(agent) {
+    return Array.from(this.leads.values()).filter(
+      (lead) => lead.assignedAgent?.toLowerCase() === agent.toLowerCase()
+    );
   }
   // Initialize data
   initializeData() {
@@ -166,212 +397,10 @@ var MemStorage = class {
     });
   }
 };
-var storage = new MemStorage();
+var storage = process.env.DATABASE_URL ? new DatabaseStorage() : new MemStorage();
 
 // server/routes.ts
 import { z } from "zod";
-
-// shared/schema.ts
-import { pgTable, text, serial, integer, boolean, json } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-var chatUsers = pgTable("chat_users", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  contact: text("contact").notNull(),
-  conversation: json("conversation").$type()
-});
-var insertChatUserSchema = createInsertSchema(chatUsers).pick({
-  name: true,
-  contact: true,
-  conversation: true
-});
-var properties = pgTable("properties", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  price: integer("price").notNull(),
-  location: text("location").notNull(),
-  type: text("type").notNull(),
-  status: text("status").notNull(),
-  bedrooms: integer("bedrooms").notNull(),
-  bathrooms: integer("bathrooms").notNull(),
-  squareFeet: integer("square_feet").notNull(),
-  garage: integer("garage").notNull(),
-  isFeatured: boolean("is_featured").default(false),
-  image: text("image").notNull()
-});
-var insertPropertySchema = createInsertSchema(properties).pick({
-  title: true,
-  description: true,
-  price: true,
-  location: true,
-  type: true,
-  status: true,
-  bedrooms: true,
-  bathrooms: true,
-  squareFeet: true,
-  garage: true,
-  isFeatured: true,
-  image: true
-});
-var projects = pgTable("projects", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description").notNull(),
-  location: text("location").notNull(),
-  units: text("units").notNull(),
-  startingPrice: integer("starting_price").notNull(),
-  completionDate: text("completion_date").notNull(),
-  status: text("status").notNull(),
-  progressPercentage: integer("progress_percentage").notNull(),
-  image: text("image").notNull()
-});
-var insertProjectSchema = createInsertSchema(projects).pick({
-  title: true,
-  description: true,
-  location: true,
-  units: true,
-  startingPrice: true,
-  completionDate: true,
-  status: true,
-  progressPercentage: true,
-  image: true
-});
-
-// server/services/googleSheets.ts
-import { google } from "googleapis";
-var contactRowMap = /* @__PURE__ */ new Map();
-var GoogleSheetsService = class {
-  sheets;
-  sheetId;
-  constructor() {
-    const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
-    const auth = new google.auth.JWT({
-      email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-      key: privateKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-    });
-    this.sheets = google.sheets({ version: "v4", auth });
-    this.sheetId = process.env.GOOGLE_SHEET_ID || "";
-    if (!this.sheetId) {
-      console.warn("Warning: GOOGLE_SHEET_ID environment variable is not set.");
-    }
-  }
-  /**
-   * Check if a contact exists in the sheet and find its row number
-   */
-  async findContactRow(contact) {
-    try {
-      if (contactRowMap.has(contact)) {
-        return contactRowMap.get(contact) || null;
-      }
-      const response = await this.sheets.spreadsheets.values.get({
-        spreadsheetId: this.sheetId,
-        range: "Sheet1!C:C"
-        // Contact column (Column C)
-      });
-      const rows = response.data.values;
-      if (rows && rows.length > 0) {
-        for (let i = 1; i < rows.length; i++) {
-          if (rows[i] && rows[i][0] === contact) {
-            contactRowMap.set(contact, i + 1);
-            return i + 1;
-          }
-        }
-      }
-      return null;
-    } catch (error) {
-      console.error("Error finding contact in sheet:", error);
-      return null;
-    }
-  }
-  /**
-   * Adds a new row to the Google Sheet with customer data or updates an existing row
-   */
-  async addCustomerData(data) {
-    try {
-      if (!this.sheetId) {
-        console.error("Error: Google Sheet ID is not configured");
-        throw new Error("Google Sheet ID is not configured");
-      }
-      console.log("Adding customer data to Google Sheets for contact:", data.contact);
-      const values = [
-        data.timestamp || (/* @__PURE__ */ new Date()).toISOString(),
-        data.name,
-        data.contact,
-        data.interest,
-        data.propertyInterest || "",
-        data.locationInterest || "",
-        data.budgetRange || "",
-        data.notes || ""
-      ];
-      console.log("Checking if contact already exists in Google Sheets");
-      const existingRow = await this.findContactRow(data.contact);
-      if (existingRow) {
-        console.log(`Contact ${data.contact} found at row ${existingRow}, updating existing entry`);
-        const result = await this.sheets.spreadsheets.values.update({
-          spreadsheetId: this.sheetId,
-          range: `Sheet1!A${existingRow}:H${existingRow}`,
-          valueInputOption: "RAW",
-          requestBody: {
-            values: [values]
-          }
-        });
-        if (result.status === 200) {
-          console.log(`Successfully updated existing contact at row ${existingRow}`);
-          return true;
-        } else {
-          console.error(`Error updating row ${existingRow}, status code: ${result.status}`);
-          return false;
-        }
-      } else {
-        console.log(`Contact ${data.contact} not found, appending new row`);
-        const result = await this.sheets.spreadsheets.values.append({
-          spreadsheetId: this.sheetId,
-          range: "Sheet1!A:H",
-          valueInputOption: "RAW",
-          requestBody: {
-            values: [values]
-          }
-        });
-        if (result.status === 200) {
-          const updatedRange = result.data.updates?.updatedRange;
-          if (updatedRange) {
-            const match = updatedRange.match(/A(\d+):/);
-            if (match && match[1]) {
-              const rowNumber = parseInt(match[1]);
-              contactRowMap.set(data.contact, rowNumber);
-              console.log(`New contact added at approximate row ${rowNumber}`);
-            } else {
-              console.log("Added new contact but could not determine row number");
-            }
-          }
-          return true;
-        }
-        console.error("Failed to append new row, status code:", result.status);
-        return false;
-      }
-    } catch (error) {
-      console.error("Error adding/updating data in Google Sheet:", error);
-      if (error.response) {
-        console.error("Google API error details:", {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
-        });
-        if (error.response.status === 403) {
-          console.error("Permission denied. Make sure the service account has Editor access to the spreadsheet");
-        } else if (error.response.status === 404) {
-          console.error("Spreadsheet not found. Check the GOOGLE_SHEET_ID value");
-        }
-      }
-      throw error;
-    }
-  }
-};
-var googleSheetsService = new GoogleSheetsService();
-
-// server/routes.ts
 async function registerRoutes(app2) {
   const apiRouter = app2.route("/api");
   app2.get("/api/properties", async (req, res) => {
@@ -387,6 +416,7 @@ async function registerRoutes(app2) {
       const featuredProperties = await storage.getFeaturedProperties();
       res.json(featuredProperties);
     } catch (error) {
+      console.error("Error fetching featured properties:", error);
       res.status(500).json({ error: "Failed to fetch featured properties" });
     }
   });
@@ -428,6 +458,7 @@ async function registerRoutes(app2) {
       const projects2 = await storage.getProjects();
       res.json(projects2);
     } catch (error) {
+      console.error("Error fetching projects:", error);
       res.status(500).json({ error: "Failed to fetch projects" });
     }
   });
@@ -493,23 +524,76 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to update chat user conversation" });
     }
   });
+  app2.get("/api/chat/users", async (req, res) => {
+    try {
+      const leads2 = await storage.getLeads();
+      if (leads2 && leads2.length > 0) {
+        for (const lead of leads2) {
+          try {
+            const existingUser = await storage.getChatUserByContact(lead.contact);
+            if (!existingUser) {
+              await storage.createChatUser({
+                name: lead.name,
+                contact: lead.contact,
+                conversation: null
+              });
+              console.log(`Created chat user from lead: ${lead.name}`);
+            }
+          } catch (e) {
+            console.error(`Failed to process chat user for lead ${lead.id}:`, e);
+          }
+        }
+      }
+      const allLeads = await storage.getLeads();
+      const uniqueContacts = /* @__PURE__ */ new Set();
+      const uniqueLeads = [];
+      for (const lead of allLeads) {
+        if (!uniqueContacts.has(lead.contact)) {
+          uniqueContacts.add(lead.contact);
+          uniqueLeads.push(lead);
+        }
+      }
+      const users = uniqueLeads.map((lead) => ({
+        id: lead.id,
+        name: lead.name,
+        contact: lead.contact,
+        conversation: null
+      }));
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching chat users:", error);
+      res.status(500).json({ error: "Failed to fetch chat users" });
+    }
+  });
+  app2.get("/api/leads", async (req, res) => {
+    try {
+      const leads2 = await storage.getLeads();
+      res.json(leads2);
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+  app2.delete("/api/leads/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid lead ID" });
+      }
+      const success = await storage.deleteLead(id);
+      if (success) {
+        res.status(200).json({ message: "Lead deleted successfully" });
+      } else {
+        res.status(404).json({ error: "Lead not found" });
+      }
+    } catch (error) {
+      console.error("Error deleting lead:", error);
+      res.status(500).json({ error: "Failed to delete lead" });
+    }
+  });
   app2.post("/api/sheets/log-lead", async (req, res) => {
     console.log("Received lead data request:", JSON.stringify(req.body));
     try {
-      if (!process.env.GOOGLE_SHEET_ID) {
-        console.error("GOOGLE_SHEET_ID environment variable is missing");
-        return res.status(500).json({
-          error: "Server configuration error - missing sheet ID",
-          details: "Contact administrator to verify Google Sheets configuration"
-        });
-      }
-      if (!process.env.GOOGLE_SHEETS_CLIENT_EMAIL || !process.env.GOOGLE_SHEETS_PRIVATE_KEY) {
-        console.error("Google Sheets credentials are missing");
-        return res.status(500).json({
-          error: "Server configuration error - missing credentials",
-          details: "Contact administrator to verify Google API credentials"
-        });
-      }
       const leadSchema = z.object({
         name: z.string().min(2, "Name must be at least 2 characters"),
         contact: z.string().min(5, "Contact information must be at least 5 characters"),
@@ -517,25 +601,68 @@ async function registerRoutes(app2) {
         propertyInterest: z.string().optional(),
         locationInterest: z.string().optional(),
         budgetRange: z.string().optional(),
-        notes: z.string().optional()
+        notes: z.string().optional(),
+        conversation: z.array(z.object({
+          role: z.enum(["user", "bot"]),
+          message: z.string(),
+          timestamp: z.number()
+        })).optional()
       });
       const validatedData = leadSchema.parse(req.body);
       console.log("Validated lead data:", JSON.stringify(validatedData));
-      const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-      const success = await googleSheetsService.addCustomerData({
-        ...validatedData,
-        timestamp
-      });
-      if (success) {
-        console.log("Successfully logged lead to Google Sheets");
-        res.status(201).json({ message: "Lead logged successfully" });
-      } else {
-        console.error("Failed to log lead to Google Sheets - service returned failure");
-        res.status(500).json({
-          error: "Failed to log lead to Google Sheets",
-          details: "The request was processed but the Google Sheets service could not complete the operation"
+      const existingLeads = await storage.getLeads();
+      const existingLead = existingLeads.find((lead) => lead.contact === validatedData.contact);
+      let result;
+      let leadId;
+      if (existingLead) {
+        result = await storage.updateLead(existingLead.id, {
+          interest: validatedData.interest,
+          propertyInterest: validatedData.propertyInterest || null,
+          locationInterest: validatedData.locationInterest || null,
+          budgetRange: validatedData.budgetRange || null,
+          notes: validatedData.notes || null
         });
+        leadId = existingLead.id;
+        console.log(`Updated existing lead with ID: ${existingLead.id}`);
+      } else {
+        result = await storage.createLead({
+          name: validatedData.name,
+          contact: validatedData.contact,
+          interest: validatedData.interest,
+          propertyInterest: validatedData.propertyInterest || null,
+          locationInterest: validatedData.locationInterest || null,
+          budgetRange: validatedData.budgetRange || null,
+          notes: validatedData.notes || null,
+          assignedAgent: null,
+          followUpDate: null
+        });
+        leadId = result.id;
+        console.log("Created new lead in database with ID:", leadId);
       }
+      const existingChatUser = await storage.getChatUserByContact(validatedData.contact);
+      if (existingChatUser) {
+        if (validatedData.conversation) {
+          await storage.updateChatUserConversation(
+            existingChatUser.id,
+            validatedData.conversation
+          );
+          console.log(`Updated chat user conversation for ID: ${existingChatUser.id}`);
+        }
+      } else {
+        const chatUser = await storage.createChatUser({
+          name: validatedData.name,
+          contact: validatedData.contact,
+          conversation: validatedData.conversation || null
+        });
+        console.log(`Created new chat user with ID: ${chatUser.id}`);
+      }
+      console.log("Successfully saved lead to database");
+      res.status(201).json({
+        message: "Lead logged successfully",
+        data: result,
+        leadId
+        // Return the lead ID so the client can use it for conversation updates
+      });
     } catch (error) {
       console.error("Error in /api/sheets/log-lead:", error);
       if (error instanceof z.ZodError) {
@@ -543,20 +670,6 @@ async function registerRoutes(app2) {
         return res.status(400).json({
           error: "Invalid lead data",
           details: error.errors
-        });
-      }
-      if (error.message && error.message.includes("invalid_grant")) {
-        console.error("Google API authentication error - invalid_grant");
-        return res.status(500).json({
-          error: "Google Sheets authentication error",
-          details: "The service account credentials may be invalid or expired"
-        });
-      }
-      if (error.message && error.message.includes("permission_denied")) {
-        console.error("Google API permission error - permission_denied");
-        return res.status(500).json({
-          error: "Google Sheets permission error",
-          details: "The service account does not have permission to access the spreadsheet"
         });
       }
       res.status(500).json({
