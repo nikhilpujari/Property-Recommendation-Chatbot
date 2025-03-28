@@ -1,0 +1,17 @@
+[[redirects]]
+  from = "/api/*"
+  to = "https://7f17df2b-5925-4de5-a570-94505fb5c030-00-2yovi3oly721k.janeway.replit.dev/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[context.production.environment]
+  VITE_API_URL = "https://7f17df2b-5925-4de5-a570-94505fb5c030-00-2yovi3oly721k.janeway.replit.dev"
