@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { seedDatabase } from "./utils/databaseSeeder";
+import { testDatabaseConnection } from "./db";
 
 const app = express();
 app.use(express.json());
@@ -61,6 +63,44 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Test the database connection first
+  try {
+    // Verify database connection before proceeding
+    console.log('Testing database connectivity...');
+    const isConnected = await testDatabaseConnection();
+    
+    if (isConnected) {
+      // If connection is successful, proceed with seeding
+      try {
+        await seedDatabase();
+        console.log('Database initialization complete');
+      } catch (seedError) {
+        console.error('Error seeding database:', seedError);
+        // Log more diagnostic info for Render deployment
+        if (process.env.RENDER) {
+          console.error('Running on Render, database seeding failed');
+          if (seedError instanceof Error) {
+            console.error('Error details:', seedError.message);
+            console.error('Stack trace:', seedError.stack);
+          }
+        }
+      }
+    } else {
+      console.error('Database connection test failed - skipping seeding');
+      console.error('IMPORTANT: API endpoints requiring database access may not work');
+      
+      // If on Render, print a more detailed diagnostic message
+      if (process.env.RENDER) {
+        console.error('Running on Render environment - database connection issues');
+        console.error('Check that the DATABASE_URL environment variable is correctly set');
+        console.error('Ensure database permissions allow connections from Render IP addresses');
+        console.error('API endpoints requiring database access may return empty arrays');
+      }
+    }
+  } catch (connectionError) {
+    console.error('Critical database connection error:', connectionError);
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

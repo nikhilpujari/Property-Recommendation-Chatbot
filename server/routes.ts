@@ -18,17 +18,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.header('Access-Control-Allow-Methods', 'GET');
       res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization');
       
-      const properties = await storage.getProperties();
+      // Add Cache-Control headers to prevent caching
+      res.header('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.header('Expires', '0');
+      res.header('Pragma', 'no-cache');
+      
+      console.log('Attempting to fetch properties from storage...');
+      let properties = await storage.getProperties();
+      
+      // Log detailed information about properties retrieved
       console.log(`Retrieved ${properties.length} properties from storage`);
+      
+      // Special handling for empty properties - force seeding if on Render
+      if (properties.length === 0) {
+        console.log('WARNING: No properties found in the database');
+        
+        // For Render deployment, try to seed data automatically
+        if (process.env.RENDER) {
+          console.log('Running on Render with empty properties table - attempting emergency seeding');
+          
+          try {
+            // Import seeder directly to avoid circular dependencies
+            const { seedDatabase } = await import('./utils/databaseSeeder');
+            await seedDatabase(true); // Force seeding even if count is not 0
+            
+            // Try to fetch properties again after seeding
+            console.log('Fetching properties after emergency seeding...');
+            properties = await storage.getProperties();
+            console.log(`After seeding: Retrieved ${properties.length} properties`);
+          } catch (seedError) {
+            console.error('Emergency seeding failed:', seedError);
+          }
+        }
+      }
+      
+      if (properties.length > 0) {
+        // Log the IDs of retrieved properties for debugging
+        const propertyIds = properties.map(p => p.id).join(', ');
+        console.log(`Property IDs: ${propertyIds}`);
+      } else {
+        console.log('CRITICAL: Properties table is still empty after seeding attempt');
+        console.log('Check DATABASE_URL environment variable on Render');
+        console.log('Verify database permissions and connectivity');
+      }
       
       // Send explicit response with proper content type
       res.setHeader('Content-Type', 'application/json');
       res.status(200).json(properties);
     } catch (error: any) {
       console.error('Error in GET /api/properties:', error);
+      
+      // Log more detailed error information
+      console.error('Error type:', error.constructor.name);
+      console.error('Error message:', error.message);
+      
+      if (error.code) {
+        console.error('Error code:', error.code);
+      }
+      
+      if (error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      
+      // Return a formatted error response
       res.status(500).json({ 
         error: 'Failed to fetch properties',
         message: error.message || 'Unknown error',
+        code: error.code,
+        environment: process.env.NODE_ENV,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
