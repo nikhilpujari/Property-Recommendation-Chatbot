@@ -106,15 +106,41 @@ export default function AdminDashboard() {
   const { 
     data: properties = [], 
     isLoading: isLoadingProperties,
-    refetch: refetchProperties
+    refetch: refetchProperties,
+    error: propertiesError
   } = useQuery({
     queryKey: ['/api/properties'],
     queryFn: async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/properties`);
-        return response.data;
-      } catch (error) {
+        console.log('Fetching properties from:', `${API_BASE_URL}/api/properties`);
+        const response = await axios.get(`${API_BASE_URL}/api/properties`, {
+          // Add additional headers to debug CORS issues
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache, no-store'
+          },
+          // Add timestamp parameter to prevent caching
+          params: { 
+            _t: new Date().getTime() 
+          }
+        });
+        console.log('Properties response:', response);
+        return response.data || [];
+      } catch (error: any) {
         console.error('Error fetching properties:', error);
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          console.error('Error data:', error.response.data);
+          console.error('Error status:', error.response.status);
+          console.error('Error headers:', error.response.headers);
+        } else if (error.request) {
+          // The request was made but no response was received
+          console.error('No response received:', error.request);
+        } else {
+          // Something happened in setting up the request that triggered an Error
+          console.error('Error message:', error.message);
+        }
         return [];
       }
     },

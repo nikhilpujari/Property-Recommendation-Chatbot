@@ -11,10 +11,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all properties
   app.get('/api/properties', async (req: Request, res: Response) => {
     try {
+      console.log('GET /api/properties request received');
+      
+      // Add CORS headers to this specific endpoint for troubleshooting
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization');
+      
       const properties = await storage.getProperties();
-      res.json(properties);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch properties' });
+      console.log(`Retrieved ${properties.length} properties from storage`);
+      
+      // Send explicit response with proper content type
+      res.setHeader('Content-Type', 'application/json');
+      res.status(200).json(properties);
+    } catch (error: any) {
+      console.error('Error in GET /api/properties:', error);
+      res.status(500).json({ 
+        error: 'Failed to fetch properties',
+        message: error.message || 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   });
 
